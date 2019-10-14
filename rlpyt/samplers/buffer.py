@@ -6,6 +6,7 @@ from rlpyt.utils.buffer import buffer_from_example, torchify_buffer
 from rlpyt.agents.base import AgentInputs
 from rlpyt.samplers.collections import (Samples, AgentSamples, AgentSamplesBsv,
     EnvSamples)
+from rlpyt.utils.collections import namedarraytuple_like
 
 
 def build_samples_buffer(agent, env, batch_spec, bootstrap_value=False,
@@ -69,7 +70,10 @@ def get_example_outputs(agent, env, examples, subprocess=False):
     r = np.asarray(r, dtype="float32")  # Must match torch float dtype here.
     agent.reset()
     agent_inputs = torchify_buffer(AgentInputs(o, a, r))
+    agent_inputs = AgentInputs(*map(lambda x: x.unsqueeze(dim=0), agent_inputs))
     a, agent_info = agent.step(*agent_inputs)
+    a = a.squeeze(0)
+    agent_info = namedarraytuple_like(agent_info)(*map(lambda x: x.squeeze(dim=0), agent_info))
     if "prev_rnn_state" in agent_info:
         # Agent leaves B dimension in, strip it: [B,N,H] --> [N,H]
         agent_info = agent_info._replace(prev_rnn_state=agent_info.prev_rnn_state[0])
