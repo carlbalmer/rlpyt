@@ -1,7 +1,6 @@
 
 import multiprocessing as mp
 import numpy as np
-import torch
 
 from rlpyt.utils.buffer import buffer_from_example, torchify_buffer
 from rlpyt.agents.base import AgentInputs
@@ -71,8 +70,10 @@ def get_example_outputs(agent, env, examples, subprocess=False):
     r = np.asarray(r, dtype="float32")  # Must match torch float dtype here.
     agent.reset()
     agent_inputs = torchify_buffer(AgentInputs(o, a, r))
-    agent_inputs = add_dim_to_buffer(agent_inputs)
-    a, agent_info = remove_dim_to_buffer(agent.step(*agent_inputs))
+    agent_inputs = AgentInputs(*map(lambda x: x.unsqueeze(dim=0), agent_inputs))
+    a, agent_info = agent.step(*agent_inputs)
+    a = a.squeeze(0)
+    agent_info = namedarraytuple_like(agent_info)(*map(lambda x: x.squeeze(dim=0), agent_info))
     if "prev_rnn_state" in agent_info:
         # Agent leaves B dimension in, strip it: [B,N,H] --> [N,H]
         agent_info = agent_info._replace(prev_rnn_state=agent_info.prev_rnn_state[0])
@@ -82,29 +83,3 @@ def get_example_outputs(agent, env, examples, subprocess=False):
     examples["env_info"] = env_info
     examples["action"] = a  # OK to put torch tensor here, could numpify.
     examples["agent_info"] = agent_info
-
-
-def add_dim_to_buffer(buffer_):
-    if buffer_ is None:
-        return
-    if isinstance(buffer_, np.ndarray):
-        return torch.unsqueeze(torch.from_numpy(buffer_), dim=0)
-    elif isinstance(buffer_, torch.Tensor):
-        return torch.unsqueeze(buffer_, dim=0)
-    contents = tuple(add_dim_to_buffer(b) for b in buffer_)
-    if type(buffer_) is tuple:  # tuple, namedtuple instantiate differently.
-        return contents
-    return type(buffer_)(*contents)
-
-
-def remove_dim_to_buffer(buffer_):
-    if buffer_ is None:
-        return
-    if isinstance(buffer_, np.ndarray):
-        return torch.squeeze(torch.from_numpy(buffer_), dim=0)
-    elif isinstance(buffer_, torch.Tensor):
-        return torch.squeeze(buffer_, dim=0)
-    contents = tuple(remove_dim_to_buffer(b) for b in buffer_)
-    if type(buffer_) is tuple:  # tuple, namedtuple instantiate differently.
-        return contents
-    return type(buffer_)(*contents)
